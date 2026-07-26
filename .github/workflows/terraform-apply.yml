@@ -1,0 +1,70 @@
+# Applies Terraform on merge to main. Uses GitHub Environments (prod-us-east-1,
+# prod-eu-west-1) with required reviewers configured in repo Settings -> Environments
+# -- this is the actual approval gate, not anything in this YAML.
+name: Terraform Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to apply (leave blank for both)"
+        type: choice
+        options: [both, prod-us-east-1, prod-eu-west-1]
+        default: both
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VERSION: "1.7.5"
+
+jobs:
+  apply-us-east-1:
+    if: github.event.inputs.environment != 'prod-eu-west-1'
+    runs-on: ubuntu-latest
+    environment: prod-us-east-1   # <- GitHub Environment protection rule = manual approval gate
+    defaults:
+      run:
+        working-directory: terraform/environments/prod-us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - run: terraform init -input=false
+      - run: |
+          terraform apply -auto-approve -input=false \
+            -var="certificate_arn=${{ secrets.ACM_CERT_ARN }}" \
+            -var="internal_zone_id=${{ secrets.INTERNAL_ZONE_ID }}"
+
+  apply-eu-west-1:
+    if: github.event.inputs.environment != 'prod-us-east-1'
+    needs: []   # deliberately NOT depending on us-east-1 - regions apply independently
+    runs-on: ubuntu-latest
+    environment: prod-eu-west-1
+    defaults:
+      run:
+        working-directory: terraform/environments/prod-eu-west-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN_EUW1 }}
+          aws-region: eu-west-1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - run: terraform init -input=false
+      - run: |
+          terraform apply -auto-approve -input=false \
+            -var="certificate_arn=${{ secrets.ACM_CERT_ARN_EUW1 }}" \
+            -var="internal_zone_id=${{ secrets.INTERNAL_ZONE_ID_EUW1 }}"

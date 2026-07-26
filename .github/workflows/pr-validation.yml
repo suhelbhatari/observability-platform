@@ -1,0 +1,29 @@
+# Lightweight, fast checks that run on every PR regardless of which paths changed:
+# repo hygiene, not deep infra validation (that's handled by the path-scoped workflows).
+name: PR Validation
+
+on:
+  pull_request:
+
+jobs:
+  general-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for accidentally committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Markdown link check (docs/ and READMEs)
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: "yes"
+          config-file: ".github/mlc_config.json"
+
+      - name: Require PR description
+        if: github.event.pull_request.body == ''
+        run: |
+          echo "::error::PR description is empty. Explain what changed and why (especially for terraform/ or clickhouse/ changes)."
+          exit 1

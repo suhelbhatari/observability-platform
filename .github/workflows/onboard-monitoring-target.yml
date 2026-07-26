@@ -1,0 +1,86 @@
+# Self-service onboarding: any engineer can trigger this from the Actions tab
+# instead of needing shell access to the Ansible control node. Wraps the exact
+# same script described in docs/ONBOARDING_RUNBOOK.md.
+#
+# Requires a self-hosted runner with network access to the target VPC (private
+# subnets aren't reachable from GitHub-hosted runners) - see
+# docs/CICD.md "Self-hosted runner" section for setup. SSH key is pulled from
+# GitHub Environment secrets, never stored in the repo.
+name: Onboard Monitoring Target
+
+on:
+  workflow_dispatch:
+    inputs:
+      hostname:
+        description: "Unique hostname (inventory key)"
+        required: true
+      ip_address:
+        description: "IP address of the target"
+        required: true
+      owner_team:
+        description: "Owning team (drives alert routing)"
+        required: true
+      log_path:
+        description: "Log file glob to tail"
+        required: false
+        default: "/var/log/app/*.log"
+      target_type:
+        description: "Target type"
+        required: false
+        default: "vm"
+        type: choice
+        options: [vm, appliance, image]
+
+permissions:
+  contents: write   # onboarding writes to inventory/monitored_targets.yml and commits it
+
+jobs:
+  onboard:
+    runs-on: [self-hosted, observability-vpc]
+    environment: fleet-management   # gate this behind required reviewers if desired
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible
+        run: |
+          pip install --upgrade pip
+          pip install ansible-core boto3
+          ansible-galaxy collection install amazon.aws community.general
+
+      - name: Configure SSH key for fleet access
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.FLEET_SSH_PRIVATE_KEY }}" > ~/.ssh/observability-prod-key.pem
+          chmod 600 ~/.ssh/observability-prod-key.pem
+
+      - name: Run onboarding playbook
+        working-directory: ansible
+        run: |
+          ansible-playbook playbooks/onboard_node.yml \
+            -e "hostname=${{ github.event.inputs.hostname }}" \
+            -e "target_host=${{ github.event.inputs.ip_address }}" \
+            -e "owner_team=${{ github.event.inputs.owner_team }}" \
+            -e "target_type=${{ github.event.inputs.target_type }}" \
+            -e "log_paths=['${{ github.event.inputs.log_path }}']"
+
+      - name: Commit inventory change
+        run: |
+          git config user.name "observability-bot"
+          git config user.email "observability-bot@users.noreply.github.com"
+          git add ansible/inventory/monitored_targets.yml
+          git diff --cached --quiet || git commit -m "onboard: add ${{ github.event.inputs.hostname }} (via GitHub Actions, requested by ${{ github.actor }})"
+          git push
+
+      - name: Summary
+        run: |
+          echo "### Onboarded ${{ github.event.inputs.hostname }}" >> $GITHUB_STEP_SUMMARY
+          echo "- IP: ${{ github.event.inputs.ip_address }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Owner team: ${{ github.event.inputs.owner_team }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Requested by: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Check Grafana fleet dashboard within ~2 minutes to confirm data flow." >> $GITHUB_STEP_SUMMARY

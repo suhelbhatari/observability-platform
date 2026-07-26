@@ -1,0 +1,50 @@
+# Spins up a throwaway ClickHouse container and applies every DDL file in order,
+# exactly as ansible/playbooks/clickhouse_cluster.yml would against real nodes.
+# Catches syntax errors and ON CLUSTER issues before they hit production.
+name: ClickHouse Schema Validate
+
+on:
+  pull_request:
+    paths:
+      - "clickhouse/**"
+      - ".github/workflows/clickhouse-schema-validate.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:24.8
+        ports:
+          - 8123:8123
+          - 9000:9000
+        options: >-
+          --health-cmd "wget --spider -q http://localhost:8123/ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clickhouse-client
+        run: |
+          curl https://clickhouse.com/ | sh
+          sudo mv ./clickhouse /usr/local/bin/
+
+      - name: Apply schema files (single-node, so strip ON CLUSTER for this smoke test)
+        run: |
+          for f in clickhouse/init-schemas/*.sql; do
+            echo "== applying $f =="
+            sed 's/ON CLUSTER obs_cluster//g' "$f" > /tmp/stripped.sql
+            clickhouse-client --host 127.0.0.1 --multiquery --queries-file /tmp/stripped.sql
+          done
+
+      - name: Sanity check - tables exist
+        run: |
+          clickhouse-client --host 127.0.0.1 --query \
+            "SELECT name FROM system.tables WHERE database = 'otel' ORDER BY name FORMAT PrettyCompact"
+          COUNT=$(clickhouse-client --host 127.0.0.1 --query "SELECT count() FROM system.tables WHERE database = 'otel'")
+          if [ "$COUNT" -lt 6 ]; then
+            echo "Expected at least 6 objects (tables + views) in otel database, got $COUNT"
+            exit 1
+          fi

@@ -1,0 +1,8 @@
+{
+  "ignorePatterns": [
+    { "pattern": "^https://grafana\\.observability\\.acme\\.internal" },
+    { "pattern": "^https://your-domain" }
+  ],
+  "retryOn429": true,
+  "aliveStatusCodes": [200, 206, 403]
+}

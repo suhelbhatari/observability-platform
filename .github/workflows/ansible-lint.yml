@@ -1,0 +1,42 @@
+# Lints and syntax-checks every playbook/role on PR. Catches broken Jinja,
+# bad module args, and style issues before they ever reach a real host.
+name: Ansible Lint
+
+on:
+  pull_request:
+    paths:
+      - "ansible/**"
+      - ".github/workflows/ansible-lint.yml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible + linters
+        run: |
+          pip install --upgrade pip
+          pip install ansible-core ansible-lint yamllint
+
+      - name: Install required collections
+        run: |
+          ansible-galaxy collection install amazon.aws community.general
+
+      - name: yamllint
+        run: yamllint -c .yamllint.yml ansible/
+
+      - name: ansible-lint
+        run: ansible-lint ansible/playbooks ansible/roles
+
+      - name: Syntax-check every playbook (no live hosts needed)
+        working-directory: ansible
+        run: |
+          for pb in playbooks/*.yml; do
+            echo "== $pb =="
+            ansible-playbook "$pb" --syntax-check -i inventory/monitored_targets.yml
+          done

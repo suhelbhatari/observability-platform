@@ -1,0 +1,45 @@
+# Static security scanning for IaC + shell scripts. Runs on every PR and weekly
+# on main to catch newly-disclosed issues in unchanged code (e.g. new tfsec rule).
+name: Security Scan
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - "scripts/**"
+      - "ansible/**"
+  schedule:
+    - cron: "0 6 * * 1"   # weekly, Monday 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  tfsec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: terraform
+
+  checkov:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkov (Terraform + Kubernetes manifests)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform,kubernetes
+          quiet: true
+          soft_fail: false
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: "./scripts"
+          severity: warning

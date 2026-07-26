@@ -1,0 +1,45 @@
+# Nightly drift correction: re-runs site.yml across the whole fleet in safe rolling
+# batches (serial values defined in the playbook itself - see ansible/README.md).
+# Idempotent by design, so this should be a no-op most nights.
+name: Scheduled Fleet Convergence
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC daily, low-traffic window
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  converge:
+    runs-on: [self-hosted, observability-vpc]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible
+        run: |
+          pip install --upgrade pip
+          pip install ansible-core boto3
+          ansible-galaxy collection install amazon.aws community.general
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.FLEET_SSH_PRIVATE_KEY }}" > ~/.ssh/observability-prod-key.pem
+          chmod 600 ~/.ssh/observability-prod-key.pem
+
+      - name: Run site.yml (rolling, idempotent)
+        working-directory: ansible
+        run: ansible-playbook playbooks/site.yml
+
+      - name: Notify on failure only
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\":rotating_light: Scheduled fleet convergence FAILED - run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            "${{ secrets.SLACK_WEBHOOK_URL }}"

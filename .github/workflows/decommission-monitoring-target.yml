@@ -1,0 +1,69 @@
+# Self-service removal, mirroring onboard-monitoring-target.yml. Requires
+# explicit confirmation input (must type the hostname again) to guard against
+# fat-fingering the wrong target in the dropdown-free manual dispatch form.
+name: Decommission Monitoring Target
+
+on:
+  workflow_dispatch:
+    inputs:
+      hostname:
+        description: "Hostname to decommission"
+        required: true
+      confirm_hostname:
+        description: "Type the hostname again to confirm"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  decommission:
+    runs-on: [self-hosted, observability-vpc]
+    environment: fleet-management
+    steps:
+      - name: Verify confirmation matches
+        run: |
+          if [ "${{ github.event.inputs.hostname }}" != "${{ github.event.inputs.confirm_hostname }}" ]; then
+            echo "::error::hostname and confirm_hostname do not match - aborting"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible
+        run: |
+          pip install --upgrade pip
+          pip install ansible-core boto3
+          ansible-galaxy collection install amazon.aws community.general
+
+      - name: Configure SSH key for fleet access
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.FLEET_SSH_PRIVATE_KEY }}" > ~/.ssh/observability-prod-key.pem
+          chmod 600 ~/.ssh/observability-prod-key.pem
+
+      - name: Run decommission playbook
+        working-directory: ansible
+        run: |
+          ansible-playbook playbooks/decommission_node.yml \
+            -e "hostname=${{ github.event.inputs.hostname }}"
+
+      - name: Commit inventory change
+        run: |
+          git config user.name "observability-bot"
+          git config user.email "observability-bot@users.noreply.github.com"
+          git add ansible/inventory/monitored_targets.yml
+          git diff --cached --quiet || git commit -m "decommission: remove ${{ github.event.inputs.hostname }} (via GitHub Actions, requested by ${{ github.actor }})"
+          git push
+
+      - name: Summary
+        run: |
+          echo "### Decommissioned ${{ github.event.inputs.hostname }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Requested by: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Historical telemetry retained per ClickHouse TTL policy." >> $GITHUB_STEP_SUMMARY

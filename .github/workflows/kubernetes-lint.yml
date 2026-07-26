@@ -1,0 +1,41 @@
+# Lints Helm values files and raw K8s manifests. Doesn't need cluster access -
+# pure static validation, safe to run on every PR.
+name: Kubernetes / Helm Lint
+
+on:
+  pull_request:
+    paths:
+      - "kubernetes/**"
+      - ".github/workflows/kubernetes-lint.yml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: "v3.15.2"
+
+      - name: Add chart repos referenced by values files
+        run: |
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+          helm repo update
+
+      - name: helm lint - grafana values
+        run: helm lint grafana/grafana -f kubernetes/grafana/values.yaml
+
+      - name: helm lint - prometheus values
+        run: helm lint prometheus-community/kube-prometheus-stack -f kubernetes/prometheus/values.yaml
+
+      - name: helm lint - otel gateway values
+        run: helm lint open-telemetry/opentelemetry-collector -f kubernetes/otel-collector-gateway/values.yaml
+
+      - name: Validate raw manifests (kubeconform)
+        uses: docker://ghcr.io/yannh/kubeconform:latest
+        with:
+          entrypoint: /kubeconform
+          args: -strict -ignore-missing-schemas -summary kubernetes/namespaces kubernetes/backend kubernetes/frontend
