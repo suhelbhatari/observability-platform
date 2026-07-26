@@ -15,7 +15,11 @@ datasources:
   datasources.yaml:
     apiVersion: 1
     datasources:
+      # uid is fixed (not auto-generated) so dashboard JSON can reference it directly
+      # via the ${DS_CLICKHOUSE_METRICS} / ${DS_PROMETHEUS} / ${DS_CLICKHOUSE_LOGS}
+      # template variables used in kubernetes/grafana/dashboards/*.json
       - name: ClickHouse-Metrics
+        uid: clickhouse-metrics
         type: grafana-clickhouse-datasource
         jsonData:
           host: ch-lb.obs-prod-use1.internal
@@ -24,23 +28,39 @@ datasources:
         secureJsonData:
           password: "${GRAFANA_CLICKHOUSE_PASSWORD}"  # injected via External Secrets Operator
       - name: Prometheus
+        uid: prometheus
         type: prometheus
         url: http://kube-prometheus-stack-prometheus.observability.svc:9090
+        isDefault: true
       - name: ClickHouse-Logs
+        uid: clickhouse-logs
         type: grafana-clickhouse-datasource
         jsonData:
           host: ch-lb.obs-prod-use1.internal
           port: 8123
           defaultDatabase: otel
+        secureJsonData:
+          password: "${GRAFANA_CLICKHOUSE_PASSWORD}"
 
 dashboardProviders:
   dashboardproviders.yaml:
     apiVersion: 1
     providers:
-      - name: default
-        folder: ""
+      - name: observability-platform
+        folder: "Observability Platform"
         type: file
-        options: { path: /var/lib/grafana/dashboards/default }
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        options: { path: /var/lib/grafana/dashboards/observability-platform }
+
+# Mounts the pre-built dashboards from kubernetes/grafana/dashboards/*.json.
+# Create the ConfigMap first (kubectl, not helm, since these are static files):
+#   kubectl create configmap grafana-dashboards-observability-platform \
+#     -n observability \
+#     --from-file=kubernetes/grafana/dashboards/
+# Then reference it here so the chart mounts it at the path dashboardProviders expects above.
+dashboardsConfigMaps:
+  observability-platform: "grafana-dashboards-observability-platform"
 
 ingress:
   enabled: true

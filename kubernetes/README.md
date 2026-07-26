@@ -38,6 +38,32 @@ kubectl apply -f frontend/deployment.yaml
 
 `otel-gateway` is the **single write path** into ClickHouse — nothing else is granted `INSERT` on the `otel` database. This keeps credential distribution simple and gives one place to enforce sampling/batching/backpressure.
 
+## Grafana dashboards
+
+Three pre-built dashboards live in `grafana/dashboards/` and auto-provision into the "Observability Platform" folder:
+
+| Dashboard | Data source | Covers |
+|---|---|---|
+| `fleet-overview.json` | Prometheus | Targets up/down, fleet CPU/mem/disk/network, backend/frontend replica & restart counts, OTel Gateway throughput and export failures |
+| `clickhouse-cluster-health.json` | ClickHouse (system tables) | Replica lag, read-only replicas, active merges, replication queue depth, disk usage per table/node, query rate, p95 query latency, failed queries |
+| `logs-traces-overview.json` | ClickHouse (`otel.logs` / `otel.traces`) | Log volume/severity by service, top error messages, live log stream, trace volume, p50/p95/p99 span duration by service, slowest traces |
+
+Provision them:
+
+```bash
+kubectl create configmap grafana-dashboards-observability-platform \
+  -n observability \
+  --from-file=grafana/dashboards/
+
+helm upgrade --install grafana grafana/grafana -n observability -f grafana/values.yaml
+```
+
+The `dashboardsConfigMaps` + `dashboardProviders` blocks in `grafana/values.yaml` mount this ConfigMap and point Grafana's file-based dashboard provisioner at it — no manual import through the UI needed. Because the datasource `uid`s (`prometheus`, `clickhouse-metrics`, `clickhouse-logs`) are pinned in `values.yaml` rather than auto-generated, the dashboard JSON's datasource references resolve correctly on first load.
+
+**Updating a dashboard**: edit the JSON, re-run the `kubectl create configmap ... --from-file` command with `--dry-run=client -o yaml | kubectl apply -f -` to update in place — Grafana's provisioner picks up ConfigMap changes within `updateIntervalSeconds` (30s), no restart needed.
+
+**Adding a new dashboard**: drop a new `.json` file into `grafana/dashboards/`, re-create the ConfigMap the same way. Keep the `uid` field unique per dashboard and reuse the same three datasource `uid` values above for consistency.
+
 ## Notes for juniors
 
 - `otel-gateway` autoscales 3→12 replicas on CPU. If ClickHouse ingestion starts lagging under load, check gateway pod count and ClickHouse `system.merges` / disk I/O before assuming the gateway itself is the bottleneck.
