@@ -1,0 +1,122 @@
+{
+  "title": "Observability Platform / Logs & Traces Overview",
+  "uid": "logs-traces-overview",
+  "tags": ["observability-platform", "logs", "traces", "clickhouse"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+        "query": "SELECT DISTINCT ServiceName FROM otel.logs WHERE Timestamp >= now() - INTERVAL 1 DAY",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Logs", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [], "id": 100 },
+
+    {
+      "id": 1, "title": "Log Volume (last 15 min)", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{ "rawSql": "SELECT count() FROM otel.logs WHERE Timestamp >= now() - INTERVAL 15 MINUTE", "format": "table", "refId": "A" }]
+    },
+    {
+      "id": 2, "title": "Error Log Rate (last 15 min)", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{ "rawSql": "SELECT count() FROM otel.logs WHERE Timestamp >= now() - INTERVAL 15 MINUTE AND SeverityText IN ('ERROR','FATAL')", "format": "table", "refId": "A" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] } } }
+    },
+    {
+      "id": 3, "title": "Log Volume by Service Over Time", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 1 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{
+        "rawSql": "SELECT toStartOfMinute(Timestamp) AS time, ServiceName, count() AS log_count FROM otel.logs WHERE Timestamp >= $__fromTime AND Timestamp <= $__toTime AND ServiceName IN ($service) GROUP BY time, ServiceName ORDER BY time",
+        "format": "time_series", "refId": "A"
+      }]
+    },
+    {
+      "id": 4, "title": "Log Volume by Severity", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{
+        "rawSql": "SELECT toStartOfMinute(Timestamp) AS time, SeverityText, count() AS log_count FROM otel.logs WHERE Timestamp >= $__fromTime AND Timestamp <= $__toTime AND ServiceName IN ($service) GROUP BY time, SeverityText ORDER BY time",
+        "format": "time_series", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "custom": { "stacking": { "mode": "normal" } } } }
+    },
+    {
+      "id": 5, "title": "Top Error Messages (last 1h)", "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{
+        "rawSql": "SELECT ServiceName, left(Body, 120) AS message, count() AS occurrences FROM otel.logs WHERE Timestamp >= now() - INTERVAL 1 HOUR AND SeverityText IN ('ERROR','FATAL') AND ServiceName IN ($service) GROUP BY ServiceName, message ORDER BY occurrences DESC LIMIT 25",
+        "format": "table", "refId": "A"
+      }]
+    },
+    {
+      "id": 6, "title": "Recent Log Stream", "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 17 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{
+        "rawSql": "SELECT Timestamp AS time, ServiceName, Host, SeverityText AS level, Body AS message FROM otel.logs WHERE Timestamp >= $__fromTime AND Timestamp <= $__toTime AND ServiceName IN ($service) ORDER BY Timestamp DESC LIMIT 500",
+        "format": "logs", "refId": "A"
+      }]
+    },
+
+    { "type": "row", "title": "Traces", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 }, "collapsed": false, "panels": [], "id": 101 },
+
+    {
+      "id": 10, "title": "Trace Volume (last 15 min)", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 28 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{ "rawSql": "SELECT count(DISTINCT TraceId) FROM otel.traces WHERE Timestamp >= now() - INTERVAL 15 MINUTE", "format": "table", "refId": "A" }]
+    },
+    {
+      "id": 11, "title": "Error Span Rate (last 15 min)", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 28 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{ "rawSql": "SELECT count() FROM otel.traces WHERE Timestamp >= now() - INTERVAL 15 MINUTE AND StatusCode = 'ERROR'", "format": "table", "refId": "A" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    },
+    {
+      "id": 12, "title": "P50 / P95 / P99 Span Duration by Service (ms)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 28 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{
+        "rawSql": "SELECT toStartOfMinute(Timestamp) AS time, ServiceName, quantile(0.50)(Duration)/1000000 AS p50_ms, quantile(0.95)(Duration)/1000000 AS p95_ms, quantile(0.99)(Duration)/1000000 AS p99_ms FROM otel.traces WHERE Timestamp >= $__fromTime AND Timestamp <= $__toTime AND ServiceName IN ($service) GROUP BY time, ServiceName ORDER BY time",
+        "format": "time_series", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "id": 13, "title": "Span Count by Service", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{
+        "rawSql": "SELECT toStartOfMinute(Timestamp) AS time, ServiceName, count() AS spans FROM otel.traces WHERE Timestamp >= $__fromTime AND Timestamp <= $__toTime AND ServiceName IN ($service) GROUP BY time, ServiceName ORDER BY time",
+        "format": "time_series", "refId": "A"
+      }]
+    },
+    {
+      "id": 14, "title": "Slowest Traces (last 1h)", "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-logs" },
+      "targets": [{
+        "rawSql": "SELECT TraceId, ServiceName, SpanName, Duration/1000000 AS duration_ms, StatusCode FROM otel.traces WHERE Timestamp >= now() - INTERVAL 1 HOUR AND ServiceName IN ($service) ORDER BY Duration DESC LIMIT 25",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+{
+  "title": "Observability Platform / ClickHouse Cluster Health",
+  "uid": "clickhouse-cluster-health",
+  "tags": ["observability-platform", "clickhouse"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    { "type": "row", "title": "Cluster Topology & Replication", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [], "id": 100 },
+
+    {
+      "id": 1, "title": "Nodes in Cluster", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{ "rawSql": "SELECT count() FROM system.clusters WHERE cluster = 'obs_cluster'", "format": "table", "refId": "A" }]
+    },
+    {
+      "id": 2, "title": "Replicas with Read-Only Status", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{ "rawSql": "SELECT count() FROM system.replicas WHERE is_readonly = 1", "format": "table", "refId": "A" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    },
+    {
+      "id": 3, "title": "Max Replication Delay (sec)", "type": "gauge",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{ "rawSql": "SELECT max(absolute_delay) FROM system.replicas", "format": "table", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 30 }, { "color": "red", "value": 120 }] } } }
+    },
+    {
+      "id": 4, "title": "Active Merges", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{ "rawSql": "SELECT count() FROM system.merges", "format": "table", "refId": "A" }]
+    },
+    {
+      "id": 5, "title": "Replication Queue Depth", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{ "rawSql": "SELECT sum(queue_size) FROM system.replicas", "format": "table", "refId": "A" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 20 }, { "color": "red", "value": 100 }] } } }
+    },
+    {
+      "id": 6, "title": "Keeper Sessions (approx via ZK path)", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{ "rawSql": "SELECT count() FROM system.zookeeper WHERE path = '/clickhouse/tables'", "format": "table", "refId": "A" }]
+    },
+
+    { "type": "row", "title": "Storage & Table Growth", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "collapsed": false, "panels": [], "id": 101 },
+
+    {
+      "id": 10, "title": "Disk Usage by Table", "type": "bargauge",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{
+        "rawSql": "SELECT table, formatReadableSize(sum(bytes_on_disk)) AS size, sum(bytes_on_disk) AS size_bytes FROM system.parts WHERE active AND database = 'otel' GROUP BY table ORDER BY size_bytes DESC",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "decbytes" } }
+    },
+    {
+      "id": 11, "title": "Row Count by Table", "type": "bargauge",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{
+        "rawSql": "SELECT table, sum(rows) AS row_count FROM system.parts WHERE active AND database = 'otel' GROUP BY table ORDER BY row_count DESC",
+        "format": "table", "refId": "A"
+      }]
+    },
+    {
+      "id": 12, "title": "Free Disk Space per Node", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{
+        "rawSql": "SELECT hostName() AS node, free_space, total_space FROM system.disks",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "decbytes" } }
+    },
+
+    { "type": "row", "title": "Query & Insert Performance", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }, "collapsed": false, "panels": [], "id": 102 },
+
+    {
+      "id": 20, "title": "Query Rate by Type (SELECT vs INSERT)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{
+        "rawSql": "SELECT toStartOfMinute(event_time) AS time, query_kind, count() AS queries FROM system.query_log WHERE event_time >= now() - INTERVAL 6 HOUR AND type = 'QueryFinish' GROUP BY time, query_kind ORDER BY time",
+        "format": "time_series", "refId": "A"
+      }]
+    },
+    {
+      "id": 21, "title": "P95 Query Duration (SELECT)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{
+        "rawSql": "SELECT toStartOfMinute(event_time) AS time, quantile(0.95)(query_duration_ms) AS p95_ms FROM system.query_log WHERE event_time >= now() - INTERVAL 6 HOUR AND type = 'QueryFinish' AND query_kind = 'Select' GROUP BY time ORDER BY time",
+        "format": "time_series", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "id": 22, "title": "Failed Queries (last 6h)", "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-metrics" },
+      "targets": [{
+        "rawSql": "SELECT event_time, hostName() AS node, exception, left(query, 150) AS query_snippet FROM system.query_log WHERE event_time >= now() - INTERVAL 6 HOUR AND type = 'ExceptionWhileProcessing' ORDER BY event_time DESC LIMIT 50",
+        "format": "table", "refId": "A"
+      }]
+    }
+  ]
+}

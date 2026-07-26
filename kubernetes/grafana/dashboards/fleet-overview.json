@@ -1,0 +1,157 @@
+{
+  "title": "Observability Platform / Fleet & Application Overview",
+  "uid": "fleet-overview",
+  "tags": ["observability-platform", "fleet", "prometheus"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "type": "custom",
+        "query": "prod,staging",
+        "current": { "text": "prod", "value": "prod" }
+      },
+      {
+        "name": "host",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(up{environment=\"$environment\"}, host)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Fleet Health", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [], "id": 100 },
+
+    {
+      "id": 1, "title": "Targets Up", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(up{environment=\"$environment\"})", "refId": "A" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } } }
+    },
+    {
+      "id": 2, "title": "Targets Down", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(up{environment=\"$environment\"} == 0)", "refId": "A" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    },
+    {
+      "id": 3, "title": "Hosts Monitored", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "count(count by (host) (up{job=\"node\",environment=\"$environment\"}))", "refId": "A" }]
+    },
+    {
+      "id": 4, "title": "Fleet-wide Avg CPU Usage", "type": "gauge",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\",environment=\"$environment\"}[5m])) * 100)", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "thresholds": { "steps": [
+        { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }
+      ] } } }
+    },
+    {
+      "id": 5, "title": "Fleet-wide Avg Memory Usage", "type": "gauge",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "avg(1 - (node_memory_MemAvailable_bytes{environment=\"$environment\"} / node_memory_MemTotal_bytes{environment=\"$environment\"})) * 100", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "thresholds": { "steps": [
+        { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }
+      ] } } }
+    },
+    {
+      "id": 6, "title": "Active Alerts", "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "count(ALERTS{alertstate=\"firing\",environment=\"$environment\"})", "refId": "A" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    },
+
+    { "type": "row", "title": "Host Resources", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "collapsed": false, "panels": [], "id": 101 },
+
+    {
+      "id": 10, "title": "CPU Usage by Host", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "100 - (avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\",host=~\"$host\",environment=\"$environment\"}[5m])) * 100)", "legendFormat": "{{host}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "id": 11, "title": "Memory Usage by Host", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "(1 - (node_memory_MemAvailable_bytes{host=~\"$host\",environment=\"$environment\"} / node_memory_MemTotal_bytes{host=~\"$host\",environment=\"$environment\"})) * 100", "legendFormat": "{{host}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "id": 12, "title": "Disk Usage by Host (root fs)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\",host=~\"$host\",environment=\"$environment\"} / node_filesystem_size_bytes{mountpoint=\"/\",host=~\"$host\",environment=\"$environment\"})) * 100", "legendFormat": "{{host}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }] } } }
+    },
+    {
+      "id": 13, "title": "Network Throughput by Host", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(node_network_receive_bytes_total{host=~\"$host\",environment=\"$environment\",device!~\"lo|veth.*\"}[5m]) * 8", "legendFormat": "{{host}} rx", "refId": "A" },
+        { "expr": "rate(node_network_transmit_bytes_total{host=~\"$host\",environment=\"$environment\",device!~\"lo|veth.*\"}[5m]) * 8", "legendFormat": "{{host}} tx", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bps" } }
+    },
+
+    { "type": "row", "title": "Application (Backend / Frontend)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }, "collapsed": false, "panels": [], "id": 102 },
+
+    {
+      "id": 20, "title": "Backend / Frontend Pod Replicas (Current)", "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "kube_deployment_status_replicas{deployment=\"backend\",namespace=\"app\"}", "legendFormat": "backend", "refId": "A" },
+        { "expr": "kube_deployment_status_replicas{deployment=\"frontend\",namespace=\"app\"}", "legendFormat": "frontend", "refId": "B" }
+      ]
+    },
+    {
+      "id": 21, "title": "Pod Restarts (last 1h)", "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"app\"}[1h])", "legendFormat": "{{pod}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    },
+
+    { "type": "row", "title": "OTel Collector Gateway Pipeline", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 }, "collapsed": false, "panels": [], "id": 103 },
+
+    {
+      "id": 30, "title": "Accepted Telemetry Rate (by signal)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(otelcol_receiver_accepted_log_records_total[5m]))", "legendFormat": "logs/sec", "refId": "A" },
+        { "expr": "sum(rate(otelcol_receiver_accepted_spans_total[5m]))", "legendFormat": "spans/sec", "refId": "B" },
+        { "expr": "sum(rate(otelcol_receiver_accepted_metric_points_total[5m]))", "legendFormat": "metric points/sec", "refId": "C" }
+      ]
+    },
+    {
+      "id": 31, "title": "Export Failures to ClickHouse (rate)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(otelcol_exporter_send_failed_log_records_total[5m])) + sum(rate(otelcol_exporter_send_failed_spans_total[5m])) + sum(rate(otelcol_exporter_send_failed_metric_points_total[5m]))", "legendFormat": "failed exports/sec", "refId": "A" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    },
+    {
+      "id": 32, "title": "Gateway Replica Count (HPA)", "type": "timeseries",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "kube_deployment_status_replicas{deployment=\"otel-gateway\",namespace=\"observability\"}", "legendFormat": "replicas", "refId": "A" }]
+    }
+  ]
+}
