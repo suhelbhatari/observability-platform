@@ -1,0 +1,45 @@
+# Source of truth for anything monitored that ISN'T auto-discovered via AWS tags:
+# on-prem VMs, network appliances (routers/firewalls/load balancers via SNMP),
+# third-party managed images/appliances, and any EC2 instance you want monitored
+# but don't want Terraform managing directly (e.g. a vendor-provided AMI/appliance).
+#
+# This file is the record that onboard_node.yml / decommission_node.yml read and write.
+# Treat it like application data, not like static config: it changes constantly as the
+# fleet changes. It is version-controlled (PRs required) so every add/remove is auditable.
+#
+# Managed by: scripts/add-monitoring-target.sh and scripts/remove-monitoring-target.sh
+# (which call ansible/playbooks/onboard_node.yml / decommission_node.yml under the hood).
+
+all:
+  children:
+    monitored_vms:
+      hosts:
+        # example entries — real entries are appended by the onboarding playbook
+        # web-app-01:
+        #   ansible_host: 10.0.40.12
+        #   target_type: vm
+        #   monitor_metrics: true
+        #   monitor_logs: true
+        #   log_paths: ["/var/log/app/*.log"]
+        #   owner_team: platform-eng
+        #   onboarded_date: "2026-07-01"
+      vars:
+        ansible_user: ubuntu
+
+    monitored_appliances:
+      hosts:
+        # example: SNMP-only network appliance, no agent installable
+        # core-switch-dc1:
+        #   ansible_host: 10.0.1.1
+        #   target_type: appliance
+        #   monitor_method: snmp
+        #   snmp_community_vault_path: secret/observability/snmp/core-switch-dc1
+        #   owner_team: network-eng
+      vars: {}
+
+    monitored_images:
+      hosts:
+        # example: golden image / container image whose running instances self-register
+        # via the OTel/Fluent Bit agent baked into the image (no per-host Ansible entry
+        # needed beyond registration — tracked here for inventory/audit purposes only)
+      vars: {}

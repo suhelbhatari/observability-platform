@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenTelemetry Collector Agent
+After=network.target
+
+[Service]
+User=obsagent
+Group=obsagent
+ExecStart=/usr/local/bin/otelcol-contrib --config=/etc/otel/agent-config.yaml
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

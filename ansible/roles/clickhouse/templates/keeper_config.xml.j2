@@ -1,0 +1,24 @@
+<clickhouse>
+  <keeper_server>
+    <tcp_port>{{ keeper_tcp_port }}</tcp_port>
+    <server_id>{{ keeper_id | default(1) }}</server_id>
+    <log_storage_path>/var/lib/clickhouse-keeper/coordination/log</log_storage_path>
+    <snapshot_storage_path>/var/lib/clickhouse-keeper/coordination/snapshots</snapshot_storage_path>
+
+    <coordination_settings>
+      <operation_timeout_ms>10000</operation_timeout_ms>
+      <session_timeout_ms>30000</session_timeout_ms>
+      <raft_logs_level>information</raft_logs_level>
+    </coordination_settings>
+
+    <raft_configuration>
+{% for host in groups['keeper_nodes'] %}
+      <server>
+        <id>{{ loop.index }}</id>
+        <hostname>{{ hostvars[host]['ansible_host'] }}</hostname>
+        <port>{{ keeper_raft_port }}</port>
+      </server>
+{% endfor %}
+    </raft_configuration>
+  </keeper_server>
+</clickhouse>

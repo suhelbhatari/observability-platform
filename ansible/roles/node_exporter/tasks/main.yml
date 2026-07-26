@@ -1,0 +1,53 @@
+---
+- name: Check if node_exporter already installed at target version
+  stat:
+    path: "/usr/local/bin/node_exporter-{{ node_exporter_version }}"
+  register: ne_installed
+
+- block:
+    - name: Download node_exporter
+      get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+        dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        mode: "0644"
+
+    - name: Unpack node_exporter
+      unarchive:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        dest: /tmp
+        remote_src: true
+
+    - name: Install node_exporter binary
+      copy:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+        dest: "/usr/local/bin/node_exporter-{{ node_exporter_version }}"
+        mode: "0755"
+        remote_src: true
+
+    - name: Symlink current node_exporter
+      file:
+        src: "/usr/local/bin/node_exporter-{{ node_exporter_version }}"
+        dest: /usr/local/bin/node_exporter
+        state: link
+  when: not ne_installed.stat.exists
+
+- name: Install systemd unit
+  template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    mode: "0644"
+  notify: restart node_exporter
+
+- name: Enable + start node_exporter
+  systemd:
+    name: node_exporter
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Register this host as a Prometheus scrape target (file_sd)
+  include_role:
+    name: prometheus_registration
+  vars:
+    registration_job: node
+    registration_port: 9100

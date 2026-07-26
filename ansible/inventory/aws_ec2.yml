@@ -1,0 +1,35 @@
+# Dynamic inventory: auto-discovers EC2 instances Terraform created, grouped by tags.
+# Anything tagged MonitoringManaged=true and Role=<x> is picked up automatically —
+# so scaling the ClickHouse ASG or adding a Keeper node needs zero manual inventory edits.
+plugin: amazon.aws.aws_ec2
+
+regions:
+  - us-east-1
+  - eu-west-1
+
+filters:
+  tag:MonitoringManaged: "true"
+  instance-state-name: running
+
+keyed_groups:
+  # groups: clickhouse_nodes, keeper_nodes (from ansible_group tag)
+  - key: tags.ansible_group
+    prefix: ""
+    separator: ""
+  # groups: shard_1, shard_2, shard_3... (from ch_shard tag) — useful for shard-scoped plays
+  - key: tags.ch_shard
+    prefix: "shard_"
+  - key: tags.Region
+    prefix: ""
+    separator: ""
+
+hostnames:
+  - tag:Name
+  - private-ip-address
+
+compose:
+  ansible_host: private_ip_address
+  ch_shard: tags.ch_shard | default(omit)
+  ch_replica: tags.ch_replica | default(omit)
+
+strict: False

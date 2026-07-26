@@ -1,0 +1,61 @@
+# Local OTel Collector agent: receives logs (from Fluent Bit), traces/metrics
+# (from instrumented app SDKs), tags with host/env metadata, and forwards to
+# the central gateway on EKS. Runs as a lightweight per-host process, not
+# as a full pipeline — no direct ClickHouse export happens here.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+      http:
+        endpoint: 127.0.0.1:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1000
+  resource:
+    attributes:
+      - key: host.name
+        value: "{{ inventory_hostname }}"
+        action: upsert
+      - key: deployment.environment
+        value: "{{ environment | default('prod') }}"
+        action: upsert
+      - key: cloud.region
+        value: "{{ region | default('us-east-1') }}"
+        action: upsert
+  memory_limiter:
+    check_interval: 2s
+    limit_mib: 400
+
+exporters:
+  otlp/gateway:
+    endpoint: "{{ otel_collector_gateway_endpoint }}"
+    tls:
+      insecure: true # internal VPC traffic; use mTLS in a hardened setup (see docs/ARCHITECTURE.md)
+    retry_on_failure:
+      enabled: true
+    sending_queue:
+      enabled: true
+      storage: file_storage/queue
+
+extensions:
+  file_storage/queue:
+    directory: /var/lib/otel-agent/queue
+
+service:
+  extensions: [file_storage/queue]
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/gateway]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/gateway]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/gateway]

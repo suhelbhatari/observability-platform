@@ -1,0 +1,10 @@
+<clickhouse>
+  <logger>
+    <level>information</level>
+    <size>1000M</size>
+    <count>10</count>
+  </logger>
+  <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+  <background_pool_size>16</background_pool_size>
+  <mark_cache_size>5368709120</mark_cache_size>
+</clickhouse>

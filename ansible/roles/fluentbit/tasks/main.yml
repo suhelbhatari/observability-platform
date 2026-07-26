@@ -1,0 +1,37 @@
+---
+- name: Add Fluent Bit apt repo key
+  apt_key:
+    url: https://packages.fluentbit.io/fluentbit.key
+    state: present
+
+- name: Add Fluent Bit apt repo
+  apt_repository:
+    repo: "deb https://packages.fluentbit.io/ubuntu/{{ ansible_distribution_release }} {{ ansible_distribution_release }} main"
+    state: present
+    filename: fluent-bit
+
+- name: Install fluent-bit
+  apt:
+    name: "fluent-bit={{ fluentbit_version }}*"
+    state: present
+    update_cache: true
+
+- name: Deploy fluent-bit main config (inputs/filters/outputs)
+  template:
+    src: fluent-bit.conf.j2
+    dest: /etc/fluent-bit/fluent-bit.conf
+    mode: "0644"
+  notify: restart fluent-bit
+
+- name: Deploy per-app log-path parser config
+  template:
+    src: parsers.conf.j2
+    dest: /etc/fluent-bit/parsers.conf
+    mode: "0644"
+  notify: restart fluent-bit
+
+- name: Enable + start fluent-bit
+  systemd:
+    name: fluent-bit
+    state: started
+    enabled: true

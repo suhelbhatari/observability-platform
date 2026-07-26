@@ -1,0 +1,13 @@
+[
+  {
+    "targets": ["{{ ansible_host }}:{{ registration_port }}"],
+    "labels": {
+      "job": "{{ registration_job }}",
+      "host": "{{ inventory_hostname }}",
+      "environment": "{{ environment | default('prod') }}",
+      "region": "{{ region | default('us-east-1') }}",
+      "target_type": "{{ target_type | default('vm') }}",
+      "owner_team": "{{ owner_team | default('platform-eng') }}"
+    }
+  }
+]

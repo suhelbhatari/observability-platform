@@ -1,0 +1,26 @@
+---
+# Full-fleet convergence run. Safe to run repeatedly (idempotent) — use for
+# scheduled config drift correction, not for one-off onboarding (use onboard_node.yml).
+
+- name: Configure ClickHouse Keeper quorum
+  hosts: keeper_nodes
+  serial: 1   # one node at a time — never take down quorum majority simultaneously
+  roles:
+    - common
+    - clickhouse
+
+- name: Configure ClickHouse data nodes
+  hosts: clickhouse_nodes
+  serial: "34%"  # ~1 replica per shard at a time, keeps at least one replica live per shard
+  roles:
+    - common
+    - clickhouse
+
+- name: Configure all monitored VMs (base observability agents)
+  hosts: monitored_vms
+  serial: "25%"
+  roles:
+    - common
+    - node_exporter
+    - fluentbit
+    - otel_collector

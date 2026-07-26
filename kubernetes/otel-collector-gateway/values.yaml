@@ -1,0 +1,82 @@
+# OTel Collector Gateway: central aggregation point on EKS. Receives OTLP from every
+# per-host agent (Ansible-managed) AND from EKS-native app pods (backend/frontend),
+# then batches/exports to ClickHouse. This is the ONLY component allowed to write
+# directly to ClickHouse - keeps the write path single-choke-point and easy to secure.
+#
+# helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+# helm upgrade --install otel-gateway open-telemetry/opentelemetry-collector -n observability -f values.yaml
+
+mode: deployment
+replicaCount: 3
+
+resources:
+  requests: { cpu: 1,  memory: 2Gi }
+  limits:   { cpu: 4,  memory: 8Gi }
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 12
+  targetCPUUtilizationPercentage: 70
+
+service:
+  type: ClusterIP
+  ports:
+    otlp-grpc: { port: 4317 }
+    otlp-http: { port: 4318 }
+    prom-write: { port: 9090 }  # accepts Prometheus remote_write for metrics -> ClickHouse
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc: { endpoint: 0.0.0.0:4317 }
+        http: { endpoint: 0.0.0.0:4318 }
+    prometheusremotewrite:
+      endpoint: 0.0.0.0:9090
+
+  processors:
+    batch:
+      timeout: 10s
+      send_batch_size: 5000
+    memory_limiter:
+      check_interval: 2s
+      limit_mib: 6000
+    tail_sampling:  # keep 100% of error traces, sample 10% of healthy traces - controls ClickHouse growth
+      policies:
+        - name: errors-always-kept
+          type: status_code
+          status_code: { status_codes: [ERROR] }
+        - name: baseline-sample
+          type: probabilistic
+          probabilistic: { sampling_percentage: 10 }
+
+  exporters:
+    clickhouse:
+      endpoint: "tcp://ch-lb.obs-prod-use1.internal:9000?dial_timeout=10s"
+      database: otel
+      username: otel_writer
+      password: "${env:CLICKHOUSE_WRITER_PASSWORD}"  # from External Secrets / K8s Secret
+      logs_table_name: logs
+      traces_table_name: traces
+      metrics_table_name: metrics_raw
+      ttl: 0  # TTL is managed at the table DDL level (see clickhouse/init-schemas), not here
+      retry_on_failure: { enabled: true, max_elapsed_time: 300s }
+
+  service:
+    pipelines:
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [clickhouse]
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, tail_sampling, batch]
+        exporters: [clickhouse]
+      metrics:
+        receivers: [otlp, prometheusremotewrite]
+        processors: [memory_limiter, batch]
+        exporters: [clickhouse]
+
+nodeSelector:
+  workload: observability-core

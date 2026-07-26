@@ -1,0 +1,20 @@
+<clickhouse>
+  <remote_servers>
+    <{{ clickhouse_cluster_name }}>
+{% set shards = groups['clickhouse_nodes'] | map('extract', hostvars, 'ch_shard') | unique | sort %}
+{% for shard in shards %}
+      <shard>
+        <internal_replication>true</internal_replication>
+{% for host in groups['clickhouse_nodes'] %}
+{% if hostvars[host]['ch_shard'] == shard %}
+        <replica>
+          <host>{{ hostvars[host]['ansible_host'] }}</host>
+          <port>{{ clickhouse_native_port }}</port>
+        </replica>
+{% endif %}
+{% endfor %}
+      </shard>
+{% endfor %}
+    </{{ clickhouse_cluster_name }}>
+  </remote_servers>
+</clickhouse>

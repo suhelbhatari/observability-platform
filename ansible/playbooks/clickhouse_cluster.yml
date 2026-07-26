@@ -1,0 +1,43 @@
+---
+# Bootstrap or reconverge the ClickHouse + Keeper cluster after Terraform provisions
+# new nodes. Run this after `terraform apply` in terraform/environments/*, whenever
+# clickhouse_cluster or keeper_cluster module outputs change (new shard/replica added).
+
+- name: Converge Keeper quorum first (data nodes depend on it for coordination)
+  hosts: keeper_nodes
+  serial: 1
+  roles:
+    - common
+    - clickhouse
+
+- name: Converge ClickHouse data nodes
+  hosts: clickhouse_nodes
+  serial: 1   # cluster topology changes are high-risk; one node at a time, always
+  roles:
+    - common
+    - clickhouse
+  post_tasks:
+    - name: Wait for ClickHouse HTTP interface to come back up
+      uri:
+        url: "http://{{ ansible_host }}:{{ clickhouse_http_port }}/ping"
+        status_code: 200
+      register: ch_ping
+      retries: 10
+      delay: 6
+      until: ch_ping.status == 200
+
+- name: Apply schema DDL to the cluster (idempotent — CREATE ... IF NOT EXISTS)
+  hosts: clickhouse_nodes[0]
+  tasks:
+    - name: Copy schema files
+      copy:
+        src: "{{ playbook_dir }}/../../clickhouse/init-schemas/"
+        dest: /tmp/init-schemas/
+    - name: Apply each schema file via clickhouse-client
+      command: "clickhouse-client --host 127.0.0.1 --multiquery --queries-file /tmp/init-schemas/{{ item }}"
+      loop:
+        - 01_databases.sql
+        - 02_logs_table.sql
+        - 03_traces_table.sql
+        - 04_metrics_table.sql
+      changed_when: true

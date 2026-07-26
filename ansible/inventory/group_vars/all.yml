@@ -1,0 +1,16 @@
+---
+otel_collector_agent_endpoint: "127.0.0.1:4317"
+otel_collector_gateway_endpoint: "otel-gateway.obs.internal:4317"
+prometheus_scrape_targets_dir: "/etc/prometheus/file_sd"
+node_exporter_version: "1.8.2"
+fluentbit_version: "3.1.9"
+otel_collector_version: "0.107.0"
+
+clickhouse_http_port: 8123
+clickhouse_native_port: 9000
+clickhouse_cluster_name: "obs_cluster"
+
+log_retention_days: 30
+trace_retention_days: 14
+metrics_raw_retention_days: 15
+metrics_downsampled_retention_days: 400

@@ -1,0 +1,4 @@
+---
+node_exporter_enabled: true
+fluentbit_enabled: true
+otel_enabled: true

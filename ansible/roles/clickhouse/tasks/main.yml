@@ -1,0 +1,84 @@
+---
+- name: Add ClickHouse apt key
+  apt_key:
+    url: https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key
+    state: present
+  when: false # placeholder — real installs use the official deb repo below
+
+- name: Add ClickHouse deb repo
+  apt_repository:
+    repo: "deb [trusted=yes] https://packages.clickhouse.com/deb stable main"
+    state: present
+    filename: clickhouse
+
+- name: Install ClickHouse server + client + keeper
+  apt:
+    name:
+      - clickhouse-server
+      - clickhouse-client
+      - clickhouse-keeper
+    state: present
+    update_cache: true
+
+- name: Format + mount dedicated data volume
+  block:
+    - filesystem:
+        fstype: ext4
+        dev: "{{ clickhouse_data_disk }}"
+    - mount:
+        path: "{{ clickhouse_data_mount }}"
+        src: "{{ clickhouse_data_disk }}"
+        fstype: ext4
+        state: mounted
+    - file:
+        path: "{{ clickhouse_data_mount }}"
+        owner: clickhouse
+        group: clickhouse
+        recurse: true
+  when: clickhouse_role == "data_node"
+
+- name: Render cluster topology (remote_servers.xml) — shared by every node
+  template:
+    src: remote_servers.xml.j2
+    dest: /etc/clickhouse-server/config.d/remote_servers.xml
+    mode: "0644"
+  notify: restart clickhouse-server
+  when: clickhouse_role == "data_node"
+
+- name: Render Keeper config (referenced by remote_servers.xml for coordination)
+  template:
+    src: use-keeper.xml.j2
+    dest: /etc/clickhouse-server/config.d/use-keeper.xml
+    mode: "0644"
+  notify: restart clickhouse-server
+  when: clickhouse_role == "data_node"
+
+- name: Render this node's macros (shard/replica identity)
+  template:
+    src: macros.xml.j2
+    dest: /etc/clickhouse-server/config.d/macros.xml
+    mode: "0644"
+  notify: restart clickhouse-server
+  when: clickhouse_role == "data_node"
+
+- name: Render Keeper server config
+  template:
+    src: keeper_config.xml.j2
+    dest: /etc/clickhouse-keeper/keeper_config.xml
+    mode: "0644"
+  notify: restart clickhouse-keeper
+  when: clickhouse_role == "keeper"
+
+- name: Enable services
+  systemd:
+    name: "{{ 'clickhouse-server' if clickhouse_role == 'data_node' else 'clickhouse-keeper' }}"
+    state: started
+    enabled: true
+
+- name: Register ClickHouse HTTP interface as a Prometheus scrape target
+  include_role:
+    name: prometheus_registration
+  vars:
+    registration_job: clickhouse
+    registration_port: "{{ clickhouse_http_port }}"
+  when: clickhouse_role == "data_node"

@@ -1,0 +1,52 @@
+# helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+# helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#   -n observability -f values.yaml
+prometheus:
+  prometheusSpec:
+    replicas: 2
+    retention: 15d
+    resources:
+      requests: { cpu: 1,  memory: 4Gi }
+      limits:   { cpu: 4,  memory: 16Gi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          resources: { requests: { storage: 200Gi } }
+
+    # file_sd: Prometheus reads target JSON dropped by Ansible's prometheus_registration
+    # role. A sidecar syncs the S3 prefix into this local directory every 20s.
+    additionalScrapeConfigs:
+      - job_name: node
+        file_sd_configs:
+          - files: ["/etc/prometheus/file_sd/node/*.json"]
+        refresh_interval: 30s
+      - job_name: clickhouse
+        file_sd_configs:
+          - files: ["/etc/prometheus/file_sd/clickhouse/*.json"]
+        refresh_interval: 30s
+      - job_name: appliance-snmp
+        file_sd_configs:
+          - files: ["/etc/prometheus/file_sd/appliance/*.json"]
+        refresh_interval: 60s
+
+    containers:
+      - name: file-sd-s3-sync
+        image: amazon/aws-cli:2.17.0
+        command:
+          - /bin/sh
+          - -c
+          - "while true; do aws s3 sync s3://acme-observability-file-sd/targets /etc/prometheus/file_sd; sleep 20; done"
+        volumeMounts:
+          - name: file-sd
+            mountPath: /etc/prometheus/file_sd
+    volumes:
+      - name: file-sd
+        emptyDir: {}
+
+    # long-term storage: remote_write to the OTel gateway, which forwards to ClickHouse
+    remoteWrite:
+      - url: "http://otel-gateway.observability.svc:9090/api/v1/write"
+
+nodeSelector:
+  workload: observability-core

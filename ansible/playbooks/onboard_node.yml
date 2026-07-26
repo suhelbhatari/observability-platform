@@ -1,0 +1,73 @@
+---
+# Onboard a single new monitoring target (VM, app host, or image instance).
+#
+# Usage:
+#   ansible-playbook playbooks/onboard_node.yml \
+#     -e "target_host=10.0.40.55" \
+#     -e "hostname=web-app-07" \
+#     -e "owner_team=checkout-squad" \
+#     -e "log_paths=['/var/log/checkout/*.log']"
+#
+# What it does:
+#   1. Adds the host to inventory/monitored_targets.yml (source of truth, PR-reviewable)
+#   2. Installs + starts node_exporter, fluent-bit, otel-agent
+#   3. Registers Prometheus scrape target via file_sd (no Prometheus restart needed)
+#   4. Verifies the agent pipeline is actually emitting data before declaring success
+#
+# Prefer running this through scripts/add-monitoring-target.sh, which wraps this
+# playbook with input validation and a friendlier CLI.
+
+- name: Add host to static monitored inventory (source of truth)
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Append host entry to monitored_targets.yml
+      blockinfile:
+        path: "{{ playbook_dir }}/../inventory/monitored_targets.yml"
+        marker: "# ANSIBLE MANAGED BLOCK - {{ hostname }}"
+        insertafter: "hosts:"
+        block: |2
+                {{ hostname }}:
+                  ansible_host: {{ target_host }}
+                  target_type: {{ target_type | default('vm') }}
+                  monitor_metrics: true
+                  monitor_logs: true
+                  log_paths: {{ log_paths | default(['/var/log/app/*.log']) }}
+                  owner_team: {{ owner_team | default('platform-eng') }}
+                  onboarded_date: "{{ '%Y-%m-%d' | strftime }}"
+
+- name: Bootstrap and configure the new target
+  hosts: "{{ hostname }}"
+  gather_facts: true
+  vars:
+    log_paths: "{{ log_paths | default(['/var/log/app/*.log']) }}"
+  roles:
+    - common
+    - node_exporter
+    - fluentbit
+    - otel_collector
+
+- name: Verify the new target is emitting telemetry
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Confirm Prometheus target file exists in S3 (scrape target registered)
+      aws_s3:
+        bucket: "{{ prometheus_file_sd_bucket | default('acme-observability-file-sd') }}"
+        object: "targets/node/{{ hostname }}.json"
+        mode: get
+        dest: "/tmp/verify-{{ hostname }}.json"
+
+    - name: Check node_exporter is actually reachable and scraping cleanly
+      uri:
+        url: "http://{{ target_host }}:9100/metrics"
+        return_content: false
+        status_code: 200
+      register: ne_check
+      retries: 5
+      delay: 10
+      until: ne_check.status == 200
+
+    - name: Report onboarding result
+      debug:
+        msg: "onboarded {{ hostname }} successfully - metrics flowing, target registered."

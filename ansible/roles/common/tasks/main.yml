@@ -1,0 +1,41 @@
+---
+- name: Ensure base packages present
+  apt:
+    name:
+      - curl
+      - gnupg2
+      - unzip
+      - ca-certificates
+      - chrony  # NTP - clock sync is critical for correct trace/log timestamps
+    state: present
+    update_cache: true
+
+- name: Ensure chrony running (accurate timestamps => correlated traces/logs/metrics)
+  systemd:
+    name: chrony
+    state: started
+    enabled: true
+
+- name: Create observability service user
+  user:
+    name: obsagent
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Create standard directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: obsagent
+    group: obsagent
+    mode: "0755"
+  loop:
+    - /etc/observability
+    - /var/log/observability
+
+- name: Tag host as onboarded (local marker file, used by decommission playbook to confirm state)
+  copy:
+    dest: /etc/observability/onboarded_at
+    content: "{{ ansible_date_time.iso8601 }}\n"
+    force: false   # never overwrite an existing onboarding timestamp

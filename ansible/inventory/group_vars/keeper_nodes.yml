@@ -1,0 +1,4 @@
+---
+clickhouse_role: "keeper"
+keeper_tcp_port: 2181
+keeper_raft_port: 9234

@@ -1,0 +1,63 @@
+---
+# Safely remove a monitored target from observability. Order matters: stop generating
+# noise (deregister from Prometheus) BEFORE tearing down agents, so you never get a
+# window where Prometheus is alerting on a "down" target that's actually just
+# mid-decommission. Data already ingested into ClickHouse is retained per
+# log_retention_days / trace_retention_days — decommissioning does NOT purge history.
+#
+# Usage:
+#   ansible-playbook playbooks/decommission_node.yml -e "hostname=web-app-07"
+#
+# Prefer scripts/remove-monitoring-target.sh, which wraps this with confirmation prompts.
+
+- name: Deregister Prometheus scrape targets first (stop new alerts immediately)
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Remove node_exporter target
+      include_role:
+        name: prometheus_registration
+        tasks_from: deregister
+      vars:
+        registration_job: node
+      delegate_facts: true
+
+- name: Gracefully stop and remove agents from the host
+  hosts: "{{ hostname }}"
+  gather_facts: false
+  ignore_unreachable: true   # host may already be terminated/unreachable — don't block on it
+  tasks:
+    - name: Stop and disable node_exporter
+      systemd:
+        name: node_exporter
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Stop and disable fluent-bit
+      systemd:
+        name: fluent-bit
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Stop and disable otel-agent
+      systemd:
+        name: otel-agent
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+- name: Remove host entry from inventory/monitored_targets.yml
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Strip the managed block for this host
+      blockinfile:
+        path: "{{ playbook_dir }}/../inventory/monitored_targets.yml"
+        marker: "# ANSIBLE MANAGED BLOCK - {{ hostname }}"
+        state: absent
+
+    - name: Report decommission result
+      debug:
+        msg: "{{ hostname }} decommissioned - deregistered from Prometheus, agents stopped, inventory entry removed. Historical telemetry retained per retention policy."

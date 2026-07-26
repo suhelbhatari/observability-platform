@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: app
+  labels: { app: backend }
+spec:
+  replicas: 4
+  selector:
+    matchLabels: { app: backend }
+  template:
+    metadata:
+      labels: { app: backend }
+      annotations:
+        # Auto-instrumentation via OTel Operator injects the SDK + sets these env vars;
+        # alternatively set OTEL_* env vars directly if not using the operator.
+        instrumentation.opentelemetry.io/inject-sdk: "true"
+    spec:
+      nodeSelector:
+        workload: app
+      containers:
+        - name: backend
+          image: acme/backend:latest   # replace with your image/tag pipeline
+          ports:
+            - containerPort: 8000
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-gateway.observability.svc:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "backend"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=prod"
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits:   { cpu: 1,    memory: 1Gi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: app
+spec:
+  selector: { app: backend }
+  ports: [{ port: 80, targetPort: 8000 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+  namespace: app
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: backend }
+  minReplicas: 4
+  maxReplicas: 30
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels: { purpose: observability-stack }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels: { purpose: application-workloads }

@@ -1,0 +1,30 @@
+---
+# Renders/updates a per-host JSON file_sd target definition and pushes it to the
+# shared targets store that the EKS-hosted Prometheus reads from (an S3 prefix,
+# synced into every Prometheus pod by an init/sidecar `s3-sync` container on a
+# short interval — see kubernetes/prometheus/values.yaml `extraContainers`).
+#
+# Why file_sd + S3 instead of static_configs or Consul/EC2 SD directly:
+#   - Works uniformly for AWS AND non-AWS targets (on-prem VMs, appliances) —
+#     one mechanism for the whole fleet, not "EC2 SD for AWS + something else for everything else".
+#   - Prometheus reloads file_sd targets automatically (no config reload/restart needed).
+#   - Every add/remove is a single small JSON file diff — trivially auditable in S3 versioning.
+
+- name: Render this host's file_sd target definition
+  template:
+    src: target.json.j2
+    dest: "/tmp/target-{{ registration_job }}-{{ inventory_hostname }}.json"
+    mode: "0644"
+  delegate_to: localhost
+  vars:
+    ansible_connection: local
+
+- name: Upload target definition to the shared S3 file_sd prefix
+  aws_s3:
+    bucket: "{{ prometheus_file_sd_bucket | default('acme-observability-file-sd') }}"
+    object: "targets/{{ registration_job }}/{{ inventory_hostname }}.json"
+    src: "/tmp/target-{{ registration_job }}-{{ inventory_hostname }}.json"
+    mode: put
+  delegate_to: localhost
+  vars:
+    ansible_connection: local

@@ -1,0 +1,41 @@
+---
+- name: Download OTel Collector Contrib binary
+  get_url:
+    url: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v{{ otel_collector_version }}/otelcol-contrib_{{ otel_collector_version }}_linux_amd64.tar.gz"
+    dest: "/tmp/otelcol-contrib_{{ otel_collector_version }}.tar.gz"
+    mode: "0644"
+
+- name: Unpack OTel Collector
+  unarchive:
+    src: "/tmp/otelcol-contrib_{{ otel_collector_version }}.tar.gz"
+    dest: /tmp/otelcol
+    remote_src: true
+    creates: /tmp/otelcol/otelcol-contrib
+
+- name: Install OTel Collector binary
+  copy:
+    src: /tmp/otelcol/otelcol-contrib
+    dest: /usr/local/bin/otelcol-contrib
+    mode: "0755"
+    remote_src: true
+
+- name: Deploy agent config (receives from fluent-bit + app SDKs, forwards to gateway)
+  template:
+    src: otel-agent-config.yaml.j2
+    dest: /etc/otel/agent-config.yaml
+    mode: "0644"
+  notify: restart otel-agent
+
+- name: Install systemd unit
+  template:
+    src: otel-agent.service.j2
+    dest: /etc/systemd/system/otel-agent.service
+    mode: "0644"
+  notify: restart otel-agent
+
+- name: Enable + start otel-agent
+  systemd:
+    name: otel-agent
+    state: started
+    enabled: true
+    daemon_reload: true

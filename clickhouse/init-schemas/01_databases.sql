@@ -1,0 +1,1 @@
+CREATE DATABASE IF NOT EXISTS otel ON CLUSTER obs_cluster;

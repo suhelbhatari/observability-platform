@@ -1,0 +1,11 @@
+---
+# Called by decommission_node.yml. Removing the S3 object stops Prometheus from
+# scraping this target on its next file_sd refresh (~30s) — no restart required.
+- name: Remove target definition from shared S3 file_sd prefix
+  aws_s3:
+    bucket: "{{ prometheus_file_sd_bucket | default('acme-observability-file-sd') }}"
+    object: "targets/{{ registration_job }}/{{ inventory_hostname }}.json"
+    mode: delobj
+  delegate_to: localhost
+  vars:
+    ansible_connection: local

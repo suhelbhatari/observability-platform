@@ -1,0 +1,54 @@
+# helm repo add grafana https://grafana.github.io/helm-charts
+# helm upgrade --install grafana grafana/grafana -n observability -f values.yaml
+replicas: 2
+
+persistence:
+  enabled: true
+  storageClassName: gp3
+  size: 20Gi
+
+resources:
+  requests: { cpu: 500m, memory: 1Gi }
+  limits:   { cpu: 2,    memory: 4Gi }
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: ClickHouse-Metrics
+        type: grafana-clickhouse-datasource
+        jsonData:
+          host: ch-lb.obs-prod-use1.internal
+          port: 8123
+          defaultDatabase: otel
+        secureJsonData:
+          password: "${GRAFANA_CLICKHOUSE_PASSWORD}"  # injected via External Secrets Operator
+      - name: Prometheus
+        type: prometheus
+        url: http://kube-prometheus-stack-prometheus.observability.svc:9090
+      - name: ClickHouse-Logs
+        type: grafana-clickhouse-datasource
+        jsonData:
+          host: ch-lb.obs-prod-use1.internal
+          port: 8123
+          defaultDatabase: otel
+
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: default
+        folder: ""
+        type: file
+        options: { path: /var/lib/grafana/dashboards/default }
+
+ingress:
+  enabled: true
+  ingressClassName: alb
+  annotations:
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/scheme: internet-facing
+  hosts: ["grafana.observability.acme.internal"]
+
+nodeSelector:
+  workload: observability-core

@@ -1,0 +1,6 @@
+---
+- name: restart otel-agent
+  systemd:
+    name: otel-agent
+    state: restarted
+    daemon_reload: true

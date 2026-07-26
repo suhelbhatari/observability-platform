@@ -1,0 +1,39 @@
+<clickhouse>
+  <users>
+    <!-- Write-only user for the OTel Collector gateway exporter -->
+    <otel_writer>
+      <password_sha256_hex>REPLACE_WITH_VAULT_MANAGED_HASH</password_sha256_hex>
+      <networks><ip>::/0</ip></networks> <!-- restrict to gateway SG CIDR in prod -->
+      <profile>writer_profile</profile>
+      <quota>default</quota>
+      <access_management>0</access_management>
+      <grants>
+        <query>GRANT INSERT ON otel.* TO otel_writer</query>
+      </grants>
+    </otel_writer>
+
+    <!-- Read-only user for Grafana datasource -->
+    <grafana_reader>
+      <password_sha256_hex>REPLACE_WITH_VAULT_MANAGED_HASH</password_sha256_hex>
+      <networks><ip>::/0</ip></networks>
+      <profile>reader_profile</profile>
+      <quota>default</quota>
+      <access_management>0</access_management>
+      <grants>
+        <query>GRANT SELECT ON otel.* TO grafana_reader</query>
+      </grants>
+    </grafana_reader>
+  </users>
+
+  <profiles>
+    <writer_profile>
+      <max_memory_usage>4000000000</max_memory_usage>
+      <max_insert_block_size>1048576</max_insert_block_size>
+    </writer_profile>
+    <reader_profile>
+      <max_memory_usage>8000000000</max_memory_usage>
+      <max_execution_time>60</max_execution_time>
+      <readonly>1</readonly>
+    </reader_profile>
+  </profiles>
+</clickhouse>

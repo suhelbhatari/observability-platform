@@ -1,0 +1,10 @@
+<clickhouse>
+  <zookeeper>
+{% for host in groups['keeper_nodes'] %}
+    <node>
+      <host>{{ hostvars[host]['ansible_host'] }}</host>
+      <port>{{ keeper_tcp_port | default(2181) }}</port>
+    </node>
+{% endfor %}
+  </zookeeper>
+</clickhouse>

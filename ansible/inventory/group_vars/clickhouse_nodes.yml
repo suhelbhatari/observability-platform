@@ -1,0 +1,5 @@
+---
+clickhouse_role: "data_node"
+clickhouse_data_disk: "/dev/xvdf"
+clickhouse_data_mount: "/var/lib/clickhouse"
+clickhouse_max_server_memory_usage_pct: 80
