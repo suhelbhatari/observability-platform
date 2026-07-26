@@ -18,6 +18,8 @@ Production observability stack for **100+ hosts, multi-region/multi-AZ**, built 
 
 ```
 observability-platform/
+├── .github/workflows/     # CI/CD: terraform plan/apply, ansible/helm/clickhouse lint & validate,
+│                          #   security scanning, self-service onboard/decommission dispatch jobs
 ├── terraform/            # AWS infra: VPC, EKS, EC2 ASGs, SGs, ALB, ClickHouse/Keeper nodes
 │   ├── modules/           # Reusable modules
 │   └── environments/       # Per-region/env root modules (prod-us-east-1, prod-eu-west-1)
@@ -38,6 +40,7 @@ observability-platform/
 3. Read `docs/OFFBOARDING_RUNBOOK.md` before decommissioning anything.
 4. Terraform bootstrap: `terraform/environments/prod-us-east-1/README` (bootstraps remote state, VPC, EKS, ClickHouse ASGs).
 5. Ansible fleet management: `ansible/README.md`.
+6. CI/CD pipeline (GitHub Actions) and required one-time setup: `docs/CICD.md`.
 
 ## Design principles applied
 
